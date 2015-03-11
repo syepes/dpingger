@@ -1,13 +1,13 @@
 //RUST_LOG=debug
-#![feature(phase, slicing_syntax)]
+#![allow(unstable)]
+#![feature(plugin, slicing_syntax)]
 
-#[phase(plugin)]
+#[plugin] #[no_link]
 extern crate regex_macros;
 extern crate regex;
-#[phase(plugin, link)]
-extern crate time;
-#[phase(plugin, link)]
-extern crate log;
+//#[phase(plugin, link)]
+#[macro_use] extern crate time;
+#[macro_use] extern crate log;
 
 use std::time::Duration;
 use std::io::Timer;
@@ -19,7 +19,7 @@ use std::io::process::{Command,ProcessOutput};
 use std::str;
 use std::thread;
 use std::sync::mpsc::{channel, Sender, Receiver};
-use std::sync::{Arc, RWLock};
+use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
 
@@ -28,7 +28,7 @@ use std::result::Result;
 
 #[allow(unused_must_use)]
 #[cfg(target_os="linux")]
-fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
+fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, ctrl: Arc<RwLock<isize>>) {
     let mut timer = Timer::new().unwrap();
     println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
 
@@ -56,10 +56,10 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
                         for cap in re.captures_iter(so) {
                             data.insert("host".to_string(), host.to_string());
                             data.insert("ts".to_string(), ts_ms.to_string());
-                            data.insert("loss_pct".to_string(), cap.at(1).to_string());
-                            data.insert("max".to_string(), cap.at(2).to_string());
-                            data.insert("min".to_string(), cap.at(3).to_string());
-                            data.insert("avg".to_string(), cap.at(4).to_string());
+                            data.insert("loss_pct".to_string(), cap.at(1).unwrap().to_string());
+                            data.insert("max".to_string(), cap.at(2).unwrap().to_string());
+                            data.insert("min".to_string(), cap.at(3).unwrap().to_string());
+                            data.insert("avg".to_string(), cap.at(4).unwrap().to_string());
 
                         }
                     } else {
@@ -109,7 +109,7 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 
 #[allow(unused_must_use)]
 #[cfg(not(target_os = "linux"))]
-fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
+fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, ctrl: Arc<RwLock<isize>>) {
     let mut timer = Timer::new().unwrap();
     println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
 
@@ -137,15 +137,15 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
                         for cap in re.captures_iter(so) {
                             data.insert("host".to_string(), host.to_string());
                             data.insert("ts".to_string(), ts_ms.to_string());
-                            data.insert("loss_pct".to_string(), cap.at(1).to_string());
-                            data.insert("min".to_string(), cap.at(2).to_string());
-                            data.insert("max".to_string(), cap.at(3).to_string());
-                            data.insert("avg".to_string(), cap.at(4).to_string());
+                            data.insert("loss_pct".to_string(), cap.at(1).unwrap().to_string());
+                            data.insert("min".to_string(), cap.at(2).unwrap().to_string());
+                            data.insert("max".to_string(), cap.at(3).unwrap().to_string());
+                            data.insert("avg".to_string(), cap.at(4).unwrap().to_string());
                         }
                     } else {
                         error!("ping(): Could not extract ping metrics");
                     }
-                    debug!("ping(): cmd.status: {}", cmd.status());
+                    debug!("ping(): cmd.status: {:?}", cmd.status());
 
                 } else {
                     let so: &str = str::from_utf8(out.as_slice()).unwrap();
@@ -156,11 +156,11 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
                         for cap in re.captures_iter(so) {
                             data.insert("host".to_string(), host.to_string());
                             data.insert("ts".to_string(), ts_ms.to_string());
-                            data.insert("loss_pct".to_string(), cap.at(1).to_string());
+                            data.insert("loss_pct".to_string(), cap.at(1).unwrap().to_string());
                         }
                         warn!("ping(): Failed");
                     } else {
-                        error!("ping(): unknown error: {}", cmd.status());
+                        error!("ping(): unknown error: {:?}", cmd.status());
                         debug!("ping(): stdout was:\n{}", so);
                         debug!("ping(): stderr was:\n{}", se);
                     }
@@ -168,7 +168,7 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
             },
         }
 
-        debug!("ping(): data = {}", data);
+        debug!("ping(): data = {:?}", data);
         if !data.is_empty() {
             match sender.send(data) {
                 Ok(()) => {},
@@ -189,12 +189,12 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 
 
 #[allow(unused_must_use)]
-fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Sender<int>) {
-    println!("workers(): Starting - {}", hosts);
+fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: Sender<isize>) {
+    println!("workers(): Starting - {:?}", hosts);
 
-    let mut rx_metrics_cnt: int = 0;
+    let mut rx_metrics_cnt: isize = 0;
     let mut timer = Timer::new().unwrap();
-    let ctrl: Arc<RWLock<int>> = Arc::new(RWLock::new(0i));
+    let ctrl: Arc<RwLock<isize>> = Arc::new(RwLock::new(0is));
     let (sender_to_ping, receive_from_ping): (Sender<HashMap<String, String>>, Receiver<HashMap<String, String>>) = channel();
 
     for h in hosts.iter() {
@@ -202,9 +202,11 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Se
         let ctrl_task = ctrl.clone();
         let h_task = h.clone();
 
+        //thread::Builder::new().name(h_task.to_string()).spawn(move || {
         thread::Builder::new().name(h_task.to_string()).spawn(move || {
             ping(h_task, 5, sender_to_ping_task, ctrl_task);
-        }).detach();
+        });
+        //}).detach();
     }
 
     loop {
@@ -226,7 +228,7 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Se
 
         let ping_result = receive_from_ping.try_recv();
         if ping_result.is_ok() {
-            println!("workers(): ping_result = {}", ping_result.unwrap());
+            println!("workers(): ping_result = {:?}", ping_result.unwrap());
             rx_metrics_cnt += 1
         }
 
@@ -253,24 +255,25 @@ fn main() {
     let mut hosts: Vec<String> = file.read_to_string().unwrap().lines().map(|l| l.trim().to_string()).collect();
     //let mut hosts: Vec<String> = vec!("dns.google.com".to_string(),"localhost".to_string());
 
-    println!("hosts (File): {}", hosts);
+    println!("hosts (File): {:?}", hosts);
     println!("main(): Start");
     let mut stop_action_sent: bool = false;
     let mut timer = Timer::new().unwrap();
-    let (send_from_worker_to_main, receive_from_worker): (Sender<int>, Receiver<int>) = channel();
-    let (send_from_main_to_worker, receive_from_main): (Sender<int>, Receiver<int>) = channel();
+    let (send_from_worker_to_main, receive_from_worker): (Sender<isize>, Receiver<isize>) = channel();
+    let (send_from_main_to_worker, receive_from_main): (Sender<isize>, Receiver<isize>) = channel();
 
     //spawn(move|| {
     //thread::Thread::spawn(move || {
     //}).detach();
-    let guard = thread::Builder::new().name("worker".to_string()).spawn(move || {
-        workers(hosts[], receive_from_main, send_from_worker_to_main)
+    //let guard = thread::Builder::new().name("worker".to_string()).spawn(move || {
+    let guard = thread::Builder::new().name("worker".to_string()).scoped(move || {
+        workers(&hosts[], receive_from_main, send_from_worker_to_main)
     });
 
     loop {
         let data = receive_from_worker.try_recv();
         if data.is_ok() {
-            println!("main(): data = {}", data);
+            println!("main(): data = {:?}", data);
             break;
         }
         if stop_action() && !stop_action_sent {
@@ -295,3 +298,5 @@ fn main() {
     println!("main(): Done");
     std::os::set_exit_status(0);
 }
+
+//https://github.com/rust-lang/rust/pull/20615
