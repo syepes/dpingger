@@ -1,0 +1,12 @@
+[package]
+name = "dpingger"
+version = "0.0.1"
+authors = ["Sebastian YEPES <syepes@gmail.com>"]
+
+[dependencies]
+gcc = "*"
+time = "*"
+regex = "*"
+regex_macros = "*"
+log = "*"
+getopts = "*"
