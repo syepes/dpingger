@@ -23,33 +23,9 @@ use std::sync::{Arc, RWLock};
 
 use std::collections::HashMap;
 
-use log::{Logger,LogRecord,LogLevel,LogLocation, set_logger};
-use std::io::{ LineBufferedWriter, stdio, stderr} ;
-// Custom Logger
-struct CustomLogger {
-    handle: LineBufferedWriter<stdio::StdWriter>,
-}
-// Implements Logger trait for Custom Logger which support logging timestamp, file name and line number in addition to log level, module path and message.
-impl Logger for CustomLogger {
-    fn log(&mut self, record: &LogRecord) {
-        match writeln!(&mut self.handle,
-                       "{}:{}:{}:{}:{} {}",
-                       time::strftime("%Y-%m-%d %H:%M:%S %Z", &time::now()).unwrap(),
-                       record.level,
-                       record.module_path,
-                       "",
-                       record.line,
-                       record.args) {
-            Err(e) => panic!("failed to log: {}", e),
-            Ok(()) => {}
-        }
-    }
-}
-
 #[allow(unused_must_use)]
 #[cfg(target_os="linux")]
 fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
-    log::set_logger(box CustomLogger { handle: stderr() } );
     let mut timer = Timer::new().unwrap();
     println!("ping(): Starting ({}sec) - {}", interval, host);
 
@@ -128,7 +104,6 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 #[allow(unused_must_use)]
 #[cfg(not(target_os = "linux"))]
 fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
-    log::set_logger(box CustomLogger { handle: stderr() } );
     let mut timer = Timer::new().unwrap();
     println!("ping(): Starting ({}sec) - {}", interval, host);
 
@@ -256,8 +231,6 @@ fn stop_action() -> bool {
 
 #[allow(unused_must_use)]
 fn main() {
-    log::set_logger(box CustomLogger { handle: stderr() } );
-
     // Read list of hosts
     let path = Path::new("hosts.txt");
     let mut file = BufferedReader::new(File::open(&path));
