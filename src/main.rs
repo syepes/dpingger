@@ -1,4 +1,5 @@
 //RUST_LOG=debug
+#![feature(slicing_syntax)]
 #![feature(phase)]
 #[phase(plugin, link)] extern crate log;
 #[phase(plugin, link)] extern crate regex_macros;
@@ -25,7 +26,7 @@ use std::sync::{Arc, RWLock};
 
 #[allow(unused_must_use)]
 #[cfg(not(target_os = "linux"))]
-fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
+fn ping<'a>(host: &'a String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
 
     println!("ping(): Starting ({}sec)", interval);
@@ -33,7 +34,7 @@ fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
         let mut cmd = Command::new("ping");
-        cmd.args(&["-n", "2", "-w", "3", host]);
+        cmd.args(&["-n", "2", "-w", "3", host.as_slice()]);
         debug!("ping(): cmd: {}", cmd);
 
         // Spawn a process, wait for it to finish, and collect it's output
@@ -103,7 +104,7 @@ fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl
 
 #[allow(unused_must_use)]
 #[cfg(target_os="linux")]
-fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
+fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
 
     println!("ping(): Starting ({}sec)", interval);
@@ -111,7 +112,7 @@ fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
         let mut cmd = Command::new("ping");
-        cmd.args(&["-nqc", "2", "-w", "3", host]);
+        cmd.args(&["-nqc", "2", "-w", "3", host.as_slice()]);
         debug!("ping(): cmd: {}", cmd);
 
         // Spawn a process, wait for it to finish, and collect it's output
@@ -182,7 +183,9 @@ fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl
 
 
 #[allow(unused_must_use)]
-fn workers(hosts: Vec<&str>, receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
+//fn workers(hosts: &Vec<String>, receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
+//fn workers<'a>(hosts: &'a [String], receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
+fn workers<'a>(hosts: &'a Vec<String>, receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
     let ctrl: Arc<RWLock<int>> = Arc::new(RWLock::new(0i));
     let (sender_to_ping, receive_from_ping) = channel();
 
@@ -190,12 +193,12 @@ fn workers(hosts: Vec<&str>, receive_from_main: Receiver<int>, send_to_main: Sen
     let mut timer = Timer::new().unwrap();
 
 
-    for &h in hosts.iter() {
+    for h in hosts.mut_iter() {
         let sender_to_ping_task = sender_to_ping.clone();
         let ctrl_local = ctrl.clone();
-
+        println!("hh: {}",h);
         spawn(move|| {
-            ping(h.as_slice(), 5, sender_to_ping_task, ctrl_local);
+            ping(h, 5, sender_to_ping_task, ctrl_local);
         });
 
     }
@@ -239,7 +242,7 @@ fn main() {
     //let hosts = ["om","localhost"];
     //let hosts = ["localhost"];
     //let mut hosts: Vec<&str> = Vec::new();
-    let  hosts: Vec<&str> = vec!("om","localhost");
+    let mut hosts: Vec<String> = vec!("om".to_string(),"localhost".to_string());
     //let mut hosts: Vec<&str> = vec!("om");
 
     let path = Path::new("nodes.txt");
@@ -247,7 +250,7 @@ fn main() {
     //
     //
     //
-    let hosts_file: Vec<&str> = file.lines().map(|x| x.as_slice() ).collect();
+    //let hosts_file: Vec<&str> = file.lines().map(|x| x.as_slice() ).collect();
     //let hosts_file: Vec<String> = file.lines().map(|x| x.unwrap().as_ref() ).collect();
     //for i in h.iter() {
     //    println!("h: {}", i);
@@ -262,7 +265,7 @@ fn main() {
 
 
     println!("hosts: {}", hosts);
-    println!("hosts (File): {}", hosts_file);
+    //println!("hosts (File): {}", hosts_file);
 
     println!("main(): Start");
     let (send_from_worker_to_main, receive_from_worker) = channel();
@@ -270,7 +273,7 @@ fn main() {
     let mut timer = Timer::new().unwrap();
 
     spawn(move|| {
-        workers(hosts, receive_from_main, send_from_worker_to_main);
+        workers(hosts[], receive_from_main, send_from_worker_to_main);
     });
 
 
