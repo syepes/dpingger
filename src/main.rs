@@ -17,17 +17,20 @@ use std::io::fs::PathExtensions;
 use std::io::process::{Command,ProcessOutput};
 
 use std::str;
-use std::task::spawn;
-use std::comm::{channel, Sender, Receiver};
+use std::thread;
+use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::{Arc, RWLock};
 
 use std::collections::HashMap;
+
+use std::result::Result;
+
 
 #[allow(unused_must_use)]
 #[cfg(target_os="linux")]
 fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
-    println!("ping(): Starting ({}sec) - {}", interval, host);
+    println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
 
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
@@ -87,10 +90,13 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 
         debug!("ping(): data = {}", data);
         if !data.is_empty() {
-            sender.send_opt(data);
+            match sender.send(data) {
+                Ok(()) => {},
+                Err(..) => error!("ping(): Error sending data to worker"),
+            }
         }
 
-        let ctrl_msg = ctrl.read();
+        let ctrl_msg = ctrl.read().unwrap();
         if ctrl_msg.to_string() != "0" {
             println!("ping(): Stopping due to signal from workers() ({})", ctrl_msg.to_string());
             break;
@@ -105,7 +111,7 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 #[cfg(not(target_os = "linux"))]
 fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
-    println!("ping(): Starting ({}sec) - {}", interval, host);
+    println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
 
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
@@ -164,10 +170,13 @@ fn ping(host: String, interval: int, sender: Sender<HashMap<String, String>>, ct
 
         debug!("ping(): data = {}", data);
         if !data.is_empty() {
-            sender.send_opt(data);
+            match sender.send(data) {
+                Ok(()) => {},
+                Err(..) => error!("ping(): Error sending data to worker"),
+            }
         }
 
-        let ctrl_msg = ctrl.read();
+        let ctrl_msg = ctrl.read().unwrap();
         if ctrl_msg.to_string() != "0" {
             println!("ping(): Stopping due to signal from workers() ({})", ctrl_msg.to_string());
             break;
@@ -193,9 +202,9 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Se
         let ctrl_task = ctrl.clone();
         let h_task = h.clone();
 
-        spawn(move|| {
+        thread::Builder::new().name(h_task.to_string()).spawn(move || {
             ping(h_task, 5, sender_to_ping_task, ctrl_task);
-        });
+        }).detach();
     }
 
     loop {
@@ -204,11 +213,14 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Se
 
             // Send stop to all pings
             println!("workers(): Sending abort to ping()");
-            let mut ctrl_w = ctrl.write();
+            let mut ctrl_w = ctrl.write().unwrap();
             *ctrl_w = 1;
 
             // Send back to the main the # of received metrics
-            send_to_main.send_opt(rx_metrics_cnt);
+            match send_to_main.send(rx_metrics_cnt) {
+                Ok(()) => {},
+                Err(..) => error!("workers(): Error sending data to main: {}", rx_metrics_cnt),
+            }
             break;
         }
 
@@ -220,7 +232,11 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<int>, send_to_main: Se
 
         timer.sleep(Duration::milliseconds(30));
     }
-    send_to_main.send_opt(rx_metrics_cnt);
+
+    match send_to_main.send(rx_metrics_cnt) {
+        Ok(()) => {},
+        Err(..) => error!("workers(): Error sending data to main: {}", rx_metrics_cnt),
+    }
     println!("workers(): Done");
 }
 
@@ -244,8 +260,11 @@ fn main() {
     let (send_from_worker_to_main, receive_from_worker): (Sender<int>, Receiver<int>) = channel();
     let (send_from_main_to_worker, receive_from_main): (Sender<int>, Receiver<int>) = channel();
 
-    spawn(move|| {
-        workers(hosts[], receive_from_main, send_from_worker_to_main);
+    //spawn(move|| {
+    //thread::Thread::spawn(move || {
+    //}).detach();
+    let guard = thread::Builder::new().name("worker".to_string()).spawn(move || {
+        workers(hosts[], receive_from_main, send_from_worker_to_main)
     });
 
     loop {
@@ -256,10 +275,21 @@ fn main() {
         }
         if stop_action() && !stop_action_sent {
             println!("main(): Sending abort to worker()");
-            send_from_main_to_worker.send_opt(0);
+
+            match send_from_main_to_worker.send(0) {
+                Ok(()) => {},
+                Err(..) => error!("workers(): Error sending data to worker: {}", 0),
+            }
             stop_action_sent = true;
         }
         timer.sleep(Duration::seconds(1));
+    }
+
+    {
+    match guard.join() {
+        Result::Ok(()) => println!("OK"),
+        Result::Err(_) => println!("NOK")
+    }
     }
 
     println!("main(): Done");
