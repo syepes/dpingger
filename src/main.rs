@@ -194,7 +194,7 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: 
 
     let mut rx_metrics_cnt: isize = 0;
     let mut timer = Timer::new().unwrap();
-    let ctrl: Arc<RwLock<isize>> = Arc::new(RwLock::new(0is));
+    let ctrl: Arc<RwLock<isize>> = Arc::new(RwLock::new(0isize));
     let (sender_to_ping, receive_from_ping): (Sender<HashMap<String, String>>, Receiver<HashMap<String, String>>) = channel();
 
     for h in hosts.iter() {
