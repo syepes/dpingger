@@ -6,6 +6,8 @@
 
 extern crate time;
 
+use std::io::BufferedReader;
+use std::io::File;
 use std::io::fs::PathExtensions;
 
 use std::str;
@@ -22,6 +24,7 @@ use std::sync::{Arc, RWLock};
 
 
 #[allow(unused_must_use)]
+#[cfg(not(target_os = "linux"))]
 fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
 
@@ -98,9 +101,9 @@ fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl
 }
 
 
-
 #[allow(unused_must_use)]
-fn ping_ux(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
+#[cfg(target_os="linux")]
+fn ping(host: &str, interval: int, sender: Sender<HashMap<String, String>>, ctrl: Arc<RWLock<int>>) {
     let mut timer = Timer::new().unwrap();
 
     println!("ping(): Starting ({}sec)", interval);
@@ -179,7 +182,7 @@ fn ping_ux(host: &str, interval: int, sender: Sender<HashMap<String, String>>, c
 
 
 #[allow(unused_must_use)]
-fn workers(hosts: &[&str], receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
+fn workers(hosts: Vec<&str>, receive_from_main: Receiver<int>, send_to_main: Sender<int>) {
     let ctrl: Arc<RWLock<int>> = Arc::new(RWLock::new(0i));
     let (sender_to_ping, receive_from_ping) = channel();
 
@@ -191,17 +194,9 @@ fn workers(hosts: &[&str], receive_from_main: Receiver<int>, send_to_main: Sende
         let sender_to_ping_task = sender_to_ping.clone();
         let ctrl_local = ctrl.clone();
 
-        if 1i == 1i {
-            spawn(proc() {
-                ping(h, 5, sender_to_ping_task, ctrl_local);
-            });
-        } else {
-            spawn(proc() {
-                ping_ux(h, 5, sender_to_ping_task, ctrl_local);
-            });
-
-        }
-
+        spawn(move|| {
+            ping(h.as_slice(), 5, sender_to_ping_task, ctrl_local);
+        });
 
     }
 
@@ -243,16 +238,39 @@ fn main() {
     //let hosts = ["localhost", "dns.google.com", "bsm", "om"];
     //let hosts = ["om","localhost"];
     //let hosts = ["localhost"];
-    let hosts = vec!("om","localhost");
+    //let mut hosts: Vec<&str> = Vec::new();
+    let  hosts: Vec<&str> = vec!("om","localhost");
+    //let mut hosts: Vec<&str> = vec!("om");
 
+    let path = Path::new("nodes.txt");
+    let mut file = BufferedReader::new(File::open(&path));
+    //
+    //
+    //
+    let hosts_file: Vec<&str> = file.lines().map(|x| x.as_slice() ).collect();
+    //let hosts_file: Vec<String> = file.lines().map(|x| x.unwrap().as_ref() ).collect();
+    //for i in h.iter() {
+    //    println!("h: {}", i);
+    //    let l:String = i.clone();
+    //    hosts.push(l.as_slice());
+    //}
+    //
+    //for line in file.lines(){
+    //    let l:String = line.unwrap().clone();
+    //    hosts.push(l.as_slice());
+    //}
+
+
+    println!("hosts: {}", hosts);
+    println!("hosts (File): {}", hosts_file);
 
     println!("main(): Start");
     let (send_from_worker_to_main, receive_from_worker) = channel();
     let (send_from_main_to_worker, receive_from_main) = channel();
     let mut timer = Timer::new().unwrap();
 
-    spawn(proc() {
-        workers(&hosts, receive_from_main, send_from_worker_to_main);
+    spawn(move|| {
+        workers(hosts, receive_from_main, send_from_worker_to_main);
     });
 
 
