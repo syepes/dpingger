@@ -1,55 +1,61 @@
 //RUST_LOG=debug
-#![allow(unstable)]
-#![feature(plugin, slicing_syntax)]
+#![allow(unused_mut)]
+#![feature(plugin,exit_status,std_misc,path_ext,thread_sleep)]
 
-#[plugin] #[no_link]
-extern crate regex_macros;
+// https://github.com/ujh/iomrascalai/blob/ee1af121ec67a85701e5533f02f66e4cd37083ff/src/main.rs
+// http://stackoverflow.com/questions/28490170/entry-point-could-not-be-located-when-running-program-on-windows
+#![plugin(regex_macros)]
+#[no_link] extern crate regex_macros;
 extern crate regex;
-//#[phase(plugin, link)]
-#[macro_use] extern crate time;
+
 #[macro_use] extern crate log;
+extern crate time;
 
 use std::time::Duration;
-use std::io::Timer;
-use std::io::BufferedReader;
-use std::io::File;
-use std::io::fs::PathExtensions;
-use std::io::process::{Command,ProcessOutput};
+use std::process::{Command,Output};
 
+use std::path::Path;
+use std::fs::PathExt;
+use std::fs::File;
+
+//http://stackoverflow.com/questions/29216271/creating-a-vector-of-strings-using-the-new-stdfsfile
+//https://github.com/phildawes/racer/blob/master/src/racer/util.rs#L12
+use std::io::{BufRead, BufReader};
+
+use std::env;
 use std::str;
 use std::thread;
+//use std::thread::{Thread,JoinGuard};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
-
 use std::result::Result;
 
 
 #[allow(unused_must_use)]
 #[cfg(target_os="linux")]
 fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, ctrl: Arc<RwLock<isize>>) {
-    let mut timer = Timer::new().unwrap();
-    println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
+    println!("ping():{}: Starting ({}sec) - {}", thread::current().name().unwrap(), interval, host);
 
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
         let mut cmd = Command::new("ping");
-        cmd.args(&["-nqc", "2", "-w", "3", host.as_slice()]);
+        cmd.args(&["-nqc", "2", "-w", "3", &host]);
         debug!("ping(): cmd: {}", cmd);
 
         // Spawn a process, wait for it to finish, and collect it's output
         match cmd.output() {
             //Err(why) => panic!("Couldn't spawn cmd: {}", why.desc),
             Err(why) => panic!("ping(): Couldn't spawn cmd: {}", why),
-            Ok(ProcessOutput { error: err, output: out, status: exit }) => {
+            Ok(Output { stderr: err, stdout: out, status: exit }) => {
                 //time::now_utc()
                 let timespec = time::get_time();
                 let ts_ms = timespec.sec + timespec.nsec as i64 / 1000 / 1000;
 
                 // Check if the process succeeded, i.e. the exit code was 0
                 if exit.success() {
-                    let so: &str = str::from_utf8(out.as_slice()).unwrap();
+                    let so: &str = str::from_utf8(&out).unwrap();
                     let re = regex!(r"(?is).*\s([\d\.,]+)% packet loss.*= ([\d\.,]+)/([\d\.,]+)/([\d\.,]+)/([\d\.,]+) ms.*");
 
                     if re.is_match(so) {
@@ -68,8 +74,8 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
                     debug!("ping(): cmd.status: {}", cmd.status());
 
                 } else {
-                    let so: &str = str::from_utf8(out.as_slice()).unwrap();
-                    let se: &str = str::from_utf8(err.as_slice()).unwrap();
+                    let so: &str = str::from_utf8(&out).unwrap();
+                    let se: &str = str::from_utf8(&err).unwrap();
                     let re = regex!(r"(?is).*\s([\d\.,]+)% packet loss.*");
 
                     if re.is_match(so) {
@@ -102,7 +108,7 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        timer.sleep(Duration::seconds(interval as i64));
+        thread::sleep(Duration::seconds(interval as i64));
     }
     println!("ping(): Done");
 }
@@ -110,27 +116,26 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
 #[allow(unused_must_use)]
 #[cfg(not(target_os = "linux"))]
 fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, ctrl: Arc<RwLock<isize>>) {
-    let mut timer = Timer::new().unwrap();
-    println!("ping():{}: Starting ({}sec) - {}", thread::Thread::current().name().unwrap(), interval, host);
+    println!("ping():{:?}: Starting ({:?}sec) - {:?}", thread::current().name().unwrap(), interval, host);
 
     loop {
         let mut data: HashMap<String, String> = HashMap::new();
         let mut cmd = Command::new("ping");
-        cmd.args(&["-n", "2", "-w", "3", host.as_slice()]);
-        debug!("ping(): cmd: {}", cmd);
+        cmd.args(&["-n", "2", "-w", "3", &host]);
+        debug!("ping(): cmd: {:?}", cmd);
 
         // Spawn a process, wait for it to finish, and collect it's output
         match cmd.output() {
             //Err(why) => panic!("Couldn't spawn cmd: {}", why.desc),
             Err(why) => panic!("ping(): Couldn't spawn cmd: {}", why),
-            Ok(ProcessOutput { error: err, output: out, status: exit }) => {
+            Ok(Output { stderr: err, stdout: out, status: exit }) => {
                 //time::now_utc()
                 let timespec = time::get_time();
                 let ts_ms = timespec.sec + timespec.nsec as i64 / 1000 / 1000;
 
                 // Check if the process succeeded, i.e. the exit code was 0
                 if exit.success() {
-                    let so: &str = str::from_utf8(out.as_slice()).unwrap();
+                    let so: &str = str::from_utf8(&out).unwrap();
                     let re = regex!(r"(?is).*\s\(([\d\.,]+)% loss\).*Minimum = (\d+)ms.*Maximum = (\d+)ms.*Average = (\d+)ms.*");
 
                     if re.is_match(so) {
@@ -148,8 +153,8 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
                     debug!("ping(): cmd.status: {:?}", cmd.status());
 
                 } else {
-                    let so: &str = str::from_utf8(out.as_slice()).unwrap();
-                    let se: &str = str::from_utf8(err.as_slice()).unwrap();
+                    let so: &str = str::from_utf8(&out).unwrap();
+                    let se: &str = str::from_utf8(&err).unwrap();
                     let re = regex!(r"(?is).*\s\(([\d\.,]+)% loss\).*");
 
                     if re.is_match(so) {
@@ -182,7 +187,7 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        timer.sleep(Duration::seconds(interval as i64));
+        thread::sleep(Duration::seconds(interval as i64));
     }
     println!("ping(): Done");
 }
@@ -193,7 +198,6 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: 
     println!("workers(): Starting - {:?}", hosts);
 
     let mut rx_metrics_cnt: isize = 0;
-    let mut timer = Timer::new().unwrap();
     let ctrl: Arc<RwLock<isize>> = Arc::new(RwLock::new(0isize));
     let (sender_to_ping, receive_from_ping): (Sender<HashMap<String, String>>, Receiver<HashMap<String, String>>) = channel();
 
@@ -232,7 +236,7 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: 
             rx_metrics_cnt += 1
         }
 
-        timer.sleep(Duration::milliseconds(30));
+        thread::sleep(Duration::milliseconds(30));
     }
 
     match send_to_main.send(rx_metrics_cnt) {
@@ -251,14 +255,13 @@ fn stop_action() -> bool {
 fn main() {
     // Read list of hosts
     let path = Path::new("hosts.txt");
-    let mut file = BufferedReader::new(File::open(&path));
-    let mut hosts: Vec<String> = file.read_to_string().unwrap().lines().map(|l| l.trim().to_string()).collect();
+    let file = BufReader::new(File::open(path).unwrap());
+    let mut hosts: Vec<String> = file.lines().map(Result::unwrap).map(|l| l.trim().to_string()).collect();
     //let mut hosts: Vec<String> = vec!("dns.google.com".to_string(),"localhost".to_string());
 
     println!("hosts (File): {:?}", hosts);
     println!("main(): Start");
     let mut stop_action_sent: bool = false;
-    let mut timer = Timer::new().unwrap();
     let (send_from_worker_to_main, receive_from_worker): (Sender<isize>, Receiver<isize>) = channel();
     let (send_from_main_to_worker, receive_from_main): (Sender<isize>, Receiver<isize>) = channel();
 
@@ -267,7 +270,7 @@ fn main() {
     //}).detach();
     //let guard = thread::Builder::new().name("worker".to_string()).spawn(move || {
     let guard = thread::Builder::new().name("worker".to_string()).scoped(move || {
-        workers(&hosts[], receive_from_main, send_from_worker_to_main)
+        workers(&hosts, receive_from_main, send_from_worker_to_main)
     });
 
     loop {
@@ -285,18 +288,21 @@ fn main() {
             }
             stop_action_sent = true;
         }
-        timer.sleep(Duration::seconds(1));
+        thread::sleep(Duration::seconds(1));
     }
 
-    {
-    match guard.join() {
-        Result::Ok(()) => println!("OK"),
-        Result::Err(_) => println!("NOK")
+    /*{
+    match guard.unwrap().join() {
+    //match guard.join() {
+        Ok(()) => println!("OK"),
+        Err(_) => println!("NOK")
     }
-    }
+    }*/
+
+    guard.unwrap().join();
 
     println!("main(): Done");
-    std::os::set_exit_status(0);
+    env::set_exit_status(0);
 }
 
 //https://github.com/rust-lang/rust/pull/20615

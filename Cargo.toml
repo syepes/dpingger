@@ -1,10 +1,13 @@
 [package]
 name = "dpingger"
+description = "Device Pinger"
 version = "0.0.1"
 authors = ["Sebastian YEPES <syepes@gmail.com>"]
+homepage = "https://github.com/syepes/dpingger"
+repository = "https://github.com/syepes/dpingger"
+license = "BSD"
 
 [dependencies]
-gcc = "*"
 time = "*"
 regex = "*"
 regex_macros = "*"
