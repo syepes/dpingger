@@ -1,6 +1,6 @@
 //RUST_LOG=debug
 #![allow(unused_mut)]
-#![feature(plugin,exit_status,std_misc,path_ext,thread_sleep)]
+#![feature(plugin,exit_status,std_misc,path_ext,scoped)]
 
 // https://github.com/ujh/iomrascalai/blob/ee1af121ec67a85701e5533f02f66e4cd37083ff/src/main.rs
 // http://stackoverflow.com/questions/28490170/entry-point-could-not-be-located-when-running-program-on-windows
@@ -11,7 +11,7 @@ extern crate regex;
 #[macro_use] extern crate log;
 extern crate time;
 
-use std::time::Duration;
+use std::time::duration::Duration;
 use std::process::{Command,Output};
 
 use std::path::Path;
@@ -108,7 +108,7 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        thread::sleep(Duration::seconds(interval as i64));
+        thread::sleep_ms(Duration::seconds(interval as i64).num_milliseconds() as u32);
     }
     println!("ping(): Done");
 }
@@ -187,7 +187,7 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        thread::sleep(Duration::seconds(interval as i64));
+        thread::sleep_ms(Duration::seconds(interval as i64).num_milliseconds() as u32);
     }
     println!("ping(): Done");
 }
@@ -236,7 +236,7 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: 
             rx_metrics_cnt += 1
         }
 
-        thread::sleep(Duration::milliseconds(30));
+        thread::sleep_ms(Duration::milliseconds(30).num_milliseconds() as u32);
     }
 
     match send_to_main.send(rx_metrics_cnt) {
@@ -288,7 +288,7 @@ fn main() {
             }
             stop_action_sent = true;
         }
-        thread::sleep(Duration::seconds(1));
+        thread::sleep_ms(Duration::seconds(1).num_milliseconds() as u32);
     }
 
     /*{
