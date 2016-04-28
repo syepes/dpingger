@@ -1,36 +1,39 @@
 //RUST_LOG=debug
 #![allow(unused_mut)]
-#![feature(plugin,exit_status,std_misc,path_ext,scoped)]
+#![feature(plugin,path_ext,scoped,duration)]
 
 // https://github.com/ujh/iomrascalai/blob/ee1af121ec67a85701e5533f02f66e4cd37083ff/src/main.rs
 // http://stackoverflow.com/questions/28490170/entry-point-could-not-be-located-when-running-program-on-windows
-#![plugin(regex_macros)]
-#[no_link] extern crate regex_macros;
+#![plugin(regex_macros)] #[no_link]
+extern crate regex_macros;
 extern crate regex;
 
 #[macro_use] extern crate log;
 extern crate time;
 
-use std::time::duration::Duration;
+use std::time::Duration;
 use std::process::{Command,Output};
 
 use std::path::Path;
-use std::fs::PathExt;
+use std::fs::metadata;
 use std::fs::File;
 
 //http://stackoverflow.com/questions/29216271/creating-a-vector-of-strings-using-the-new-stdfsfile
 //https://github.com/phildawes/racer/blob/master/src/racer/util.rs#L12
 use std::io::{BufRead, BufReader};
 
-use std::env;
+use std::process;
 use std::str;
 use std::thread;
 //use std::thread::{Thread,JoinGuard};
 use std::sync::mpsc::{channel, Sender, Receiver};
 use std::sync::{Arc, RwLock};
 
+use std::net;
+
 use std::collections::HashMap;
 use std::result::Result;
+
 
 
 #[allow(unused_must_use)]
@@ -108,7 +111,8 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        thread::sleep_ms(Duration::seconds(interval as i64).num_milliseconds() as u32);
+        //thread::sleep_ms(Duration::from_secs(interval as i64).num_milliseconds() as u32);
+        thread::sleep_ms(Duration::from_secs(interval as u64).secs as u32);
     }
     println!("ping(): Done");
 }
@@ -187,7 +191,7 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
             break;
         }
 
-        thread::sleep_ms(Duration::seconds(interval as i64).num_milliseconds() as u32);
+        thread::sleep_ms(Duration::from_secs(interval as u64).secs as u32);
     }
     println!("ping(): Done");
 }
@@ -196,6 +200,12 @@ fn ping(host: String, interval: isize, sender: Sender<HashMap<String, String>>, 
 #[allow(unused_must_use)]
 fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: Sender<isize>) {
     println!("workers(): Starting - {:?}", hosts);
+
+    let ip_src = net::Ipv4Addr::new(127, 0, 0, 1);
+    let ip_dst = net::Ipv4Addr::new(127, 0, 0, 1);
+    let addr_src = net::SocketAddrV4::new(ip_src, 8889);
+    let addr_dst = net::SocketAddrV4::new(ip_dst, 8889);
+
 
     let mut rx_metrics_cnt: isize = 0;
     let ctrl: Arc<RwLock<isize>> = Arc::new(RwLock::new(0isize));
@@ -233,10 +243,16 @@ fn workers(hosts: &[String], receive_from_main:  Receiver<isize>, send_to_main: 
         let ping_result = receive_from_ping.try_recv();
         if ping_result.is_ok() {
             println!("workers(): ping_result = {:?}", ping_result.unwrap());
+
+            //let message: Vec<u8> = vec![10];
+            send_message(net::SocketAddr::V4(addr_src), net::SocketAddr::V4(addr_dst), ping_result.unwrap());
+
+            // Send
             rx_metrics_cnt += 1
         }
 
-        thread::sleep_ms(Duration::milliseconds(30).num_milliseconds() as u32);
+        //thread::sleep_ms(Duration::milliseconds(30).num_milliseconds() as u32);
+        thread::sleep_ms(Duration::from_secs(30 as u64).secs as u32);
     }
 
     match send_to_main.send(rx_metrics_cnt) {
@@ -251,8 +267,42 @@ fn stop_action() -> bool {
     Path::new("stop.txt").exists()
 }
 
+
+
+
+fn socket(listen_on: net::SocketAddr) -> net::UdpSocket {
+  let attempt = net::UdpSocket::bind(listen_on);
+  let mut socket;
+  match attempt {
+    Ok(sock) => {
+      println!("Bound socket to {}", listen_on);
+      socket = sock;
+    },
+    Err(err) => panic!("Could not bind: {}", err)
+  }
+  socket
+}
+
+pub fn send_message(send_addr: net::SocketAddr, target: net::SocketAddr, data: Vec<u8>) {
+  let socket = socket(send_addr);
+  println!("Sending data");
+  let result = socket.send_to(&data, target);
+  drop(socket);
+  match result {
+    Ok(amt) => println!("Sent {} bytes", amt),
+    Err(err) => panic!("Write error: {}", err)
+  }
+}
+
+
 #[allow(unused_must_use)]
 fn main() {
+
+    let ip_src = net::Ipv4Addr::new(127, 0, 0, 1);
+    let ip_dst = net::Ipv4Addr::new(127, 0, 0, 1);
+    let addr_src = net::SocketAddrV4::new(ip_src, 8889);
+    let addr_dst = net::SocketAddrV4::new(ip_dst, 8889);
+
     // Read list of hosts
     let path = Path::new("hosts.txt");
     let file = BufReader::new(File::open(path).unwrap());
@@ -264,6 +314,9 @@ fn main() {
     let mut stop_action_sent: bool = false;
     let (send_from_worker_to_main, receive_from_worker): (Sender<isize>, Receiver<isize>) = channel();
     let (send_from_main_to_worker, receive_from_main): (Sender<isize>, Receiver<isize>) = channel();
+
+    //let message: Vec<u8> = vec![10];
+    //send_message(net::SocketAddr::V4(addr_src), net::SocketAddr::V4(addr_dst), message);
 
     //spawn(move|| {
     //thread::Thread::spawn(move || {
@@ -284,11 +337,12 @@ fn main() {
 
             match send_from_main_to_worker.send(0) {
                 Ok(()) => {},
-                Err(..) => error!("workers(): Error sending data to worker: {}", 0),
+                Err(..) => error!("Workers(): Error sending data to worker: {}", 0),
             }
             stop_action_sent = true;
         }
-        thread::sleep_ms(Duration::seconds(1).num_milliseconds() as u32);
+        //thread::sleep_ms(Duration::seconds(1).num_milliseconds() as u32);
+        thread::sleep_ms(Duration::from_secs(1 as u64).secs as u32);
     }
 
     /*{
@@ -302,7 +356,7 @@ fn main() {
     guard.unwrap().join();
 
     println!("main(): Done");
-    env::set_exit_status(0);
+    process::exit(0);
 }
 
 //https://github.com/rust-lang/rust/pull/20615

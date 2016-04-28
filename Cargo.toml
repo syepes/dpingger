@@ -7,9 +7,12 @@ homepage = "https://github.com/syepes/dpingger"
 repository = "https://github.com/syepes/dpingger"
 license = "BSD"
 
+
 [dependencies]
 time = "*"
 regex = "*"
 regex_macros = "*"
 log = "*"
 getopts = "*"
+
+
