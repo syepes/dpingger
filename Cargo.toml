@@ -6,13 +6,11 @@ authors = ["Sebastian YEPES <syepes@gmail.com>"]
 homepage = "https://github.com/syepes/dpingger"
 repository = "https://github.com/syepes/dpingger"
 license = "BSD"
-
+edition = "2018"
 
 [dependencies]
 time = "*"
 regex = "*"
-regex_macros = "*"
 log = "*"
+env_logger = "*"
 getopts = "*"
-
-
